@@ -1,0 +1,519 @@
+import React, { useEffect, useState, useCallback } from "react";
+import { utils, writeFile } from "xlsx";
+import { Pencil, Trash2, PlusCircle, Download, Search } from "lucide-react";
+
+const TravelDetails = () => {
+  const [arrivals, setArrivals] = useState(() => {
+    const stored = localStorage.getItem("travelDetails");
+    return stored ? JSON.parse(stored) : [];
+  });
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [feedback, setFeedback] = useState({ message: null, type: null });
+
+  const filteredArrivals = arrivals
+    .filter((arrival) =>
+      Object.values(arrival)
+        .filter((value) => typeof value === "string")
+        .join(" ")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase())
+    )
+    .sort(
+      (a, b) =>
+        new Date(
+          `<span class="math-inline">\{a\.arrivalDate\}T</span>{a.arrivalTime}`
+        ) -
+        new Date(
+          `<span class="math-inline">\{b\.arrivalDate\}T</span>{b.arrivalTime}`
+        )
+    );
+
+  const initialTravelDetailState = {
+    name: "",
+    phoneNumber: "",
+    arrivalMode: "",
+    arrivalCode: "",
+    arrivalDate: "",
+    arrivalTime: "",
+    arrivalAt: "",
+    departureMode: "",
+    departureCode: "",
+    departureDate: "",
+    departureTime: "",
+    departureAt: "",
+    note: "",
+  };
+
+  const [newTravelDetail, setNewTravelDetail] = useState(
+    initialTravelDetailState
+  );
+  const [showForm, setShowForm] = useState(false);
+  const [editIndex, setEditIndex] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [itemToDeleteIndex, setItemToDeleteIndex] = useState(null);
+
+  useEffect(() => {
+    localStorage.setItem("travelDetails", JSON.stringify(arrivals));
+  }, [arrivals]);
+
+  const showFeedback = useCallback((message, type = "success") => {
+    setFeedback({ message, type });
+    setTimeout(() => {
+      setFeedback({ message: null, type: null });
+    }, 2000); // Adjust the duration as needed
+  }, []);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setNewTravelDetail((prevDetail) => ({ ...prevDetail, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (editIndex !== null) {
+      const updatedArrivals = [...arrivals];
+      updatedArrivals[editIndex] = newTravelDetail;
+      setArrivals(updatedArrivals);
+      showFeedback("Travel detail updated!", "success");
+    } else {
+      setArrivals([...arrivals, newTravelDetail]);
+      showFeedback("New travel detail saved!", "success");
+    }
+    resetForm();
+  };
+
+  const resetForm = useCallback(() => {
+    setNewTravelDetail(initialTravelDetailState);
+    setShowForm(false);
+    setEditIndex(null);
+  }, [initialTravelDetailState]);
+
+  const handleDownloadExcel = useCallback(() => {
+    const formattedData = arrivals.map((entry) => ({
+      Name: entry.name,
+      "Phone Number": entry.phoneNumber,
+      "Arrival Mode": entry.arrivalMode,
+      "Arrival Code": entry.arrivalCode,
+      "Arrival At": entry.arrivalAt,
+      "Arrival Date": entry.arrivalDate,
+      "Arrival Time": entry.arrivalTime,
+      "Departure Mode": entry.departureMode,
+      "Departure Code": entry.departureCode,
+      "Departure At": entry.departureAt,
+      "Departure Date": entry.departureDate,
+      "Departure Time": entry.departureTime,
+      Note: entry.note,
+    }));
+
+    const worksheet = utils.json_to_sheet(formattedData);
+    const workbook = utils.book_new();
+    utils.book_append_sheet(workbook, worksheet, "TravelDetails");
+    writeFile(workbook, "TravelDetails.xlsx");
+  }, [arrivals]);
+
+  const openDeleteModal = useCallback((index) => {
+    setItemToDeleteIndex(index);
+    setShowDeleteModal(true);
+  }, []);
+
+  const closeDeleteModal = useCallback(() => {
+    setShowDeleteModal(false);
+    setItemToDeleteIndex(null);
+  }, []);
+
+  const confirmDelete = useCallback(() => {
+    if (itemToDeleteIndex !== null) {
+      const itemToDelete = filteredArrivals[itemToDeleteIndex];
+      const originalIndex = arrivals.findIndex(
+        (arrival) => JSON.stringify(arrival) === JSON.stringify(itemToDelete)
+      );
+
+      if (originalIndex > -1) {
+        const updatedArrivals = [...arrivals];
+        updatedArrivals.splice(originalIndex, 1);
+        setArrivals(updatedArrivals);
+        showFeedback("Travel detail deleted!", "warning");
+      }
+      closeDeleteModal();
+      setItemToDeleteIndex(null);
+    }
+  }, [
+    arrivals,
+    filteredArrivals,
+    itemToDeleteIndex,
+    closeDeleteModal,
+    showFeedback,
+  ]);
+
+  const handleEdit = useCallback(
+    (index) => {
+      const originalIndex = arrivals.findIndex(
+        (arrival) =>
+          JSON.stringify(arrival) === JSON.stringify(filteredArrivals[index])
+      );
+      if (originalIndex > -1) {
+        setEditIndex(originalIndex);
+        setNewTravelDetail(arrivals[originalIndex]);
+        setShowForm(true);
+      }
+    },
+    [arrivals, filteredArrivals]
+  );
+
+  const openAddForm = useCallback(() => {
+    setShowForm(true);
+    setEditIndex(null);
+    setNewTravelDetail(initialTravelDetailState);
+  }, [initialTravelDetailState]);
+
+  return (
+    <div className="relative p-6 bg-white rounded-lg shadow-md">
+      {feedback.message && (
+        <div
+          className={`fixed top-4 left-1/2 transform -translate-x-1/2 py-2 px-4 rounded-md shadow-md z-50 ${
+            feedback.type === "success"
+              ? "bg-green-500 text-white"
+              : "bg-red-500 text-white"
+          }`}
+        >
+          {feedback.message}
+        </div>
+      )}
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-xl font-medium text-gray-700">
+          Travel Details Management
+        </h3>
+        <div className="flex gap-2">
+          <button
+            onClick={openAddForm}
+            className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+          >
+            <PlusCircle className="w-4 h-4" /> Add New
+          </button>
+          <button
+            onClick={handleDownloadExcel}
+            className="flex items-center gap-1 px-3 py-2 border text-gray-700 rounded hover:bg-gray-200"
+          >
+            <Download className="w-4 h-4" /> Download
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
+        <div className="flex items-center border rounded px-3 py-2 w-full sm:w-1/2">
+          <Search className="w-4 h-4 text-gray-400 mr-2" />
+          <input
+            type="text"
+            placeholder="Search by name, mode or code"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full leading-normal shadow-md rounded-lg">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="px-4 py-3 border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Name
+              </th>
+              <th className="px-4 py-3 border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Phone Number
+              </th>
+              <th className="px-4 py-3 border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Arrival Mode
+              </th>
+              <th className="px-4 py-3 border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Arrival Code
+              </th>
+              <th className="px-4 py-3 border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Arrival At
+              </th>
+              <th className="px-4 py-3 border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Arrival Date/Time
+              </th>
+              <th className="px-4 py-3 border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Departure Mode
+              </th>
+              <th className="px-4 py-3 border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Departure Code
+              </th>
+              <th className="px-4 py-3 border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Departure At
+              </th>
+              <th className="px-4 py-3 border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Departure Date/Time
+              </th>
+              <th className="px-4 py-3 border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                Note
+              </th>
+              <th className="px-4 py-3 border-b-2 border-gray-200 text-right text-xs font-semibold text-gray-600 uppercase tracking-widerr">
+                Action
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredArrivals.length === 0 ? (
+              <tr>
+                <td
+                  colSpan="11"
+                  className="px-5 py-5 text-center text-gray-500 italic"
+                >
+                  No travel details recorded yet.
+                </td>
+              </tr>
+            ) : (
+              filteredArrivals.map((arrival, index) => (
+                <tr key={index} className="hover:bg-gray-50">
+                  <td className="px-4 py-5 border-b border-gray-200 text-sm">
+                    {arrival.name}
+                  </td>
+                  <td className="px-4 py-5 border-b border-gray-200 text-sm">
+                    {arrival.phoneNumber}
+                  </td>
+                  <td className="px-4 py-5 border-b border-gray-200 text-sm">
+                    {arrival.arrivalMode}
+                  </td>
+                  <td className="px-4 py-5 border-b border-gray-200 text-sm">
+                    {arrival.arrivalCode}
+                  </td>
+                  <td className="px-4 py-5 border-b border-gray-200 text-sm">
+                    {arrival.arrivalAt}
+                  </td>
+                  <td className="px-4 py-5 border-b border-gray-200 text-sm">
+                    {arrival.arrivalDate} {arrival.arrivalTime}
+                  </td>
+                  <td className="px-4 py-5 border-b border-gray-200 text-sm">
+                    {arrival.departureMode}
+                  </td>
+                  <td className="px-4 py-5 border-b border-gray-200 text-sm">
+                    {arrival.departureCode}
+                  </td>
+                  <td className="px-4 py-5 border-b border-gray-200 text-sm">
+                    {arrival.departureAt}
+                  </td>
+                  <td className="px-4 py-5 border-b border-gray-200 text-sm">
+                    {arrival.departureDate} {arrival.departureTime}
+                  </td>
+                  <td className="px-4 py-5 border-b border-gray-200 text-sm">
+                    {arrival.note}
+                  </td>
+                  <td className="px-4 py-5 border-b border-gray-200 text-right text-sm">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => {
+                          const originalIndex = arrivals.findIndex(
+                            (a) =>
+                              JSON.stringify(a) ===
+                              JSON.stringify(filteredArrivals[index])
+                          );
+                          if (originalIndex > -1) {
+                            handleEdit(index);
+                          }
+                        }}
+                        className="text-indigo-600 hover:text-indigo-800 p-2 rounded hover:bg-indigo-100"
+                        title="Edit"
+                      >
+                        <Pencil className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => openDeleteModal(index)}
+                        className="text-red-600 hover:text-red-800 p-2 rounded hover:bg-red-100"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 flex items-center justify-center bg-gray-200/50 backdrop-blur-sm z-50">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="p-4 border-b font-semibold text-gray-800 flex justify-center">
+              {editIndex !== null ? "Edit Travel Detail" : "Add Travel Detail"}
+            </div>
+
+            {/* Scrollable form area */}
+            <form
+              onSubmit={handleSubmit}
+              id="travel-form"
+              className="flex-1 overflow-y-auto p-4 space-y-4"
+            >
+              {/* Name & Phone Side-by-Side */}
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  name="name"
+                  value={newTravelDetail.name}
+                  onChange={handleChange}
+                  placeholder="Guest Name"
+                  className="w-full px-3 py-2 border rounded-md"
+                  required
+                />
+
+                <input
+                  name="phoneNumber"
+                  value={newTravelDetail.phoneNumber}
+                  onChange={handleChange}
+                  placeholder="Phone Number"
+                  className="w-full px-3 py-2 border rounded-md"
+                  required
+                />
+              </div>
+
+              {/* Arrival Info */}
+              <div className="text-sm text-gray-600 font-medium">Arrival</div>
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  name="arrivalMode"
+                  value={newTravelDetail.arrivalMode}
+                  onChange={handleChange}
+                  placeholder="Mode (Flight/Train)"
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+                <input
+                  name="arrivalCode"
+                  value={newTravelDetail.arrivalCode}
+                  onChange={handleChange}
+                  placeholder="Code (e.g. AI123)"
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  type="date"
+                  name="arrivalDate"
+                  value={newTravelDetail.arrivalDate}
+                  onChange={handleChange}
+                  className="px-3 py-2 border rounded-md w-full"
+                />
+                <input
+                  type="time"
+                  name="arrivalTime"
+                  value={newTravelDetail.arrivalTime}
+                  onChange={handleChange}
+                  className="px-3 py-2 border rounded-md w-full"
+                />
+              </div>
+              <input
+                name="arrivalAt"
+                value={newTravelDetail.arrivalAt}
+                onChange={handleChange}
+                placeholder="Arrival Location"
+                className="w-full px-3 py-2 border rounded-md"
+              />
+
+              {/* Departure Info */}
+              <div className="text-sm text-gray-600 font-medium pt-2">
+                Departure
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  name="departureMode"
+                  value={newTravelDetail.departureMode}
+                  onChange={handleChange}
+                  placeholder="Mode (Flight/Train)"
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+                <input
+                  name="departureCode"
+                  value={newTravelDetail.departureCode}
+                  onChange={handleChange}
+                  placeholder="Code (e.g. AI456)"
+                  className="w-full px-3 py-2 border rounded-md"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  type="date"
+                  name="departureDate"
+                  value={newTravelDetail.departureDate}
+                  onChange={handleChange}
+                  className="px-3 py-2 border rounded-md w-full"
+                />
+                <input
+                  type="time"
+                  name="departureTime"
+                  value={newTravelDetail.departureTime}
+                  onChange={handleChange}
+                  className="px-3 py-2 border rounded-md w-full"
+                />
+              </div>
+              <input
+                name="departureAt"
+                value={newTravelDetail.departureAt}
+                onChange={handleChange}
+                placeholder="Departure Location"
+                className="w-full px-3 py-2 border rounded-md"
+              />
+
+              <textarea
+                name="note"
+                value={newTravelDetail.note}
+                onChange={handleChange}
+                placeholder="Note (optional)"
+                className="w-full px-3 py-2 border rounded-md"
+                rows={2}
+              />
+            </form>
+
+            {/* Fixed action buttons */}
+            <div className="p-4 border-t flex justify-end gap-2 bg-white sticky bottom-0">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="travel-form"
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+              >
+                {editIndex !== null ? "Update" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-gray-200/50 backdrop-blur-sm z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h4 className="text-lg font-semibold text-gray-800 mb-4">
+              Confirm Delete
+            </h4>
+            <p className="text-gray-700 mb-4">
+              Are you sure you want to delete this travel detail?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={closeDeleteModal}
+                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default TravelDetails;
